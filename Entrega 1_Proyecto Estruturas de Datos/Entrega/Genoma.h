@@ -1,0 +1,30 @@
+#ifndef GENOMA_H
+#define GENOMA_H
+
+#include <string>
+#include <list>
+#include "Secuencia.h"
+#include "Histograma.h"
+
+class Genoma {
+public:
+//datos minimos 
+    std::list<Secuencia> conjunto;
+    int cantSecuencias;
+
+    // Constructor
+    Genoma(std::list<Secuencia> conjunto = {}, int cantSecuencias = 0);
+
+    // Operaciones
+    const std::list<Secuencia>& getConjunto() const;
+    void setConjunto(const std::list<Secuencia>& nuevoConjunto);
+    int getCantSecuencias() const;
+    void setCantSecuencias(int cantidad);
+    void ListarSecuencias();
+
+    void ObtenerSecuencia(const std::string& nombre); // histograma de una secuencia específica
+    void ExisteSubsecuencia(std::string &sub);
+    void EnmascararSubsecuencia(std::string &sub);
+};
+
+#endif
