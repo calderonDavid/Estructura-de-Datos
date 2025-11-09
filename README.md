@@ -7,7 +7,6 @@ Esta guía está diseñada para ejecutarse en sistemas operativos basados en Lin
   - Linux Mint
   - Kali Linux
   - Pop!_OS
-  - 
 **Instalacion de compilador de C++**
   sudo apt update
   sudo apt install g++
