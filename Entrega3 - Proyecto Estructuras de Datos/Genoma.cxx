@@ -6,11 +6,22 @@
 #include <string>
 #include <vector>
 #include <list>
-#include <queue>     // Requerido para Dijkstra
-#include <cmath>     // Requerido para abs()
-#include <limits>    // Requerido para infinito
-#include <algorithm> // Requerido para reverse
+#include <queue>
+#include <cmath>
+#include <limits>
+#include <algorithm>
+#include <iomanip>
 
+
+// Estructura auxiliar para Dijkstra
+struct Estado {
+    int x, y;
+    float costo;
+    
+    bool operator>(const Estado& other) const {
+        return costo > other.costo;
+    }
+};
 // Constructor
 Genoma::Genoma(std::list<Secuencia> conjunto, int cantSecuencias) 
     : conjunto(conjunto), cantSecuencias(cantSecuencias) {}
@@ -61,11 +72,8 @@ void Genoma::ObtenerSecuencia(const std::string& nombre) {
         if (it->Obtenernombre() == nombre) {
         //buscamos que la secuencia exista en genoma
             h.ordenSegunTabla(*it);
-            return; // Agregado return para eficiencia
         }
     }
-    // Si llega aqui es que no encontro nada
-    std::cout << "Secuencia inválida.\n";
 }
 //Metodo para contar la cantidad de veces que sale una sub secuencia en las secuencias
 void Genoma::ExisteSubsecuencia(std::string &sub) {
@@ -76,10 +84,7 @@ void Genoma::ExisteSubsecuencia(std::string &sub) {
 
     int contador = 0;
     bool existe = false;
-    // Correccion de seguridad por si conjunto esta vacio (aunque el if de arriba lo cubre)
-    int anchoaux = 0; 
-    if(!conjunto.empty()) anchoaux = conjunto.begin()->anchoLinea;
-
+    int anchoaux= conjunto.begin()->anchoLinea;
     std::list<Secuencia>:: iterator it;
     for ( it = conjunto.begin(); it != conjunto.end(); it++) {
     // se pasa de char a string para manejarlo mas facil..
@@ -153,8 +158,7 @@ void Genoma::codificar(std::string& salidaArchivo){
     }
 
     std::map<char, int> frecuencia;
-    // Optimizacion: referencia constante
-    for (const Secuencia& c : conjunto) {
+    for (Secuencia c : conjunto) {
         for (char base : c.lineas) {
             frecuencia[base]++;
         }
@@ -175,17 +179,14 @@ void Genoma::codificar(std::string& salidaArchivo){
     short n_lineas = frecuencia.size();
     archivoSalida.write(reinterpret_cast<char*>(&n_lineas), sizeof(short));
     for (auto par : frecuencia) {
-        char k = par.first;
-        int v = par.second;
-        archivoSalida.write(&k, sizeof(char));
-        archivoSalida.write(reinterpret_cast<char*>(&v), sizeof(int));
+        archivoSalida.write(&par.first, sizeof(char));
+        archivoSalida.write(reinterpret_cast<char*>(&par.second), sizeof(int));
     }
     
     int n_secuencias = conjunto.size();
     archivoSalida.write(reinterpret_cast<char*>(&n_secuencias), sizeof(int));
 
     winRAR codificador;
-    // Optimizacion: iterar sin copia masiva si es posible, pero mantenemos tu logica
     for (Secuencia c : conjunto) {
         short longNombre = c.Nombresecuencia.length();
         archivoSalida.write(reinterpret_cast<char*>(&longNombre), sizeof(short));
@@ -234,7 +235,11 @@ void Genoma::decodificar(const std::string& nombreArchivo) {
     
     ArbolHoffman arbol;
     arbol.construirHojas(frecuencia);
-    
+    if (arbol.raiz == nullptr) {
+        std::cerr << "Error: árbol de Hoffman vacío tras construir hojas.\n";
+        // no return for now, pero cuidado si decodifi espera arbol no nulo
+    }
+
     int n_conjunto;
     archivoEntrada.read(reinterpret_cast<char*>(&n_conjunto), sizeof(int));
     
@@ -259,8 +264,6 @@ void Genoma::decodificar(const std::string& nombreArchivo) {
         std::vector<unsigned char> v_datos(tamano_codificado);
         archivoEntrada.read(reinterpret_cast<char*>(v_datos.data()), tamano_codificado);
         
-        // Correccion potencial: Si arbol.raiz es null, esto falla.
-        // Asumimos que construirHojas funciono bien.
         std::string conjuntoDecodificado = decodificador.decodifi(v_datos, secuencia_len_original, arbol.raiz);
         
         std::list<char> lineas(conjuntoDecodificado.begin(), conjuntoDecodificado.end());
@@ -274,212 +277,247 @@ void Genoma::decodificar(const std::string& nombreArchivo) {
     archivoEntrada.close();
     std::cout << "Secuencias decodificadas desde " << nombreArchivo << ".fabin y cargadas en memoria." << std::endl;
 }
+float calcularPeso(char a, char b) {
+    return 1.0f / (1.0f + std::abs((int)a - (int)b));
+}
 
-// =========================================================
-//         COMPONENTE 3: GRAFOS Y DIJKSTRA
-// =========================================================
-
-// Alias para evitar structs externas: Pair<Costo, Pair<Fila, Columna>>
-using NodoDijkstra = std::pair<double, std::pair<int, int>>;
-
-void Genoma::ruta_mas_corta(std::string descripcion_secuencia, int i, int j, int x, int y) {
+void Genoma::ruta_mas_corta(std::string descripcion_secuencia, int i_orig, int j_orig, int i_dest, int j_dest) {
     // 1. Buscar la secuencia
-    Secuencia* secEncontrada = nullptr;
-    // Iteramos por referencia para no copiar
-    for (auto& s : conjunto) {
-        if (s.Obtenernombre() == descripcion_secuencia) {
-            secEncontrada = &s;
+    auto it = conjunto.begin();
+    bool encontrada = false;
+    while (it != conjunto.end()) {
+        if (it->Obtenernombre() == descripcion_secuencia) {
+            encontrada = true;
             break;
         }
+        it++;
     }
 
-    if (secEncontrada == nullptr) {
+    if (!encontrada) {
         std::cout << "La secuencia " << descripcion_secuencia << " no existe.\n";
         return;
     }
 
-    // 2. Obtener matriz (Grafo implicito)
-    std::vector<std::vector<char>> matriz = secEncontrada->obtenerMatriz();
-    int filas = matriz.size();
+    // 2. Preparar datos para el grafo
+    // Convertimos la lista a vector para acceso rápido O(1)
+    std::vector<char> bases(it->lineas.begin(), it->lineas.end());
+    int ancho = it->anchoLinea;
+    int totalBases = bases.size();
     
-    // Validaciones de limites
-    if (i < 0 || i >= filas || j < 0 || j >= matriz[i].size()) {
-        std::cout << "La base en la posición [" << i << "," << j << "] no existe.\n";
+    // Calculamos altura (filas)
+    int alto = (totalBases + ancho - 1) / ancho; // División techo
+
+    // 3. Validar coordenadas
+    if (i_orig < 0 || i_orig >= alto || j_orig < 0 || j_orig >= ancho || (i_orig * ancho + j_orig) >= totalBases) {
+        std::cout << "La base en la posición [" << i_orig << "," << j_orig << "] no existe.\n";
         return;
     }
-    if (x < 0 || x >= filas || y < 0 || y >= matriz[x].size()) {
-        std::cout << "La base en la posición [" << x << "," << y << "] no existe.\n";
+    if (i_dest < 0 || i_dest >= alto || j_dest < 0 || j_dest >= ancho || (i_dest * ancho + j_dest) >= totalBases) {
+        std::cout << "La base en la posición [" << i_dest << "," << j_dest << "] no existe.\n";
         return;
     }
 
-    // 3. Inicializar Dijkstra
-    // Usamos vector de vectores para distancias y padres
-    std::vector<std::vector<double>> dist(filas);
-    std::vector<std::vector<std::pair<int, int>>> padre(filas);
+    // 4. Dijkstra
+    // Matriz de distancias inicializada en infinito
+    std::vector<std::vector<float>> dist(alto, std::vector<float>(ancho, std::numeric_limits<float>::infinity()));
+    // Matriz de padres para reconstruir la ruta: guarda coordenadas {i, j} previas
+    std::vector<std::vector<std::pair<int, int>>> parent(alto, std::vector<std::pair<int, int>>(ancho, {-1, -1}));
+    
+    std::priority_queue<Estado, std::vector<Estado>, std::greater<Estado>> pq;
 
-    // Ajustar tamaños de columnas (pueden ser irregulares)
-    for(int k=0; k<filas; k++){
-        dist[k].resize(matriz[k].size(), std::numeric_limits<double>::infinity());
-        padre[k].resize(matriz[k].size(), {-1, -1});
-    }
+    dist[i_orig][j_orig] = 0;
+    pq.push({i_orig, j_orig, 0});
 
-    // Min-Heap (menor costo arriba)
-    std::priority_queue<NodoDijkstra, std::vector<NodoDijkstra>, std::greater<NodoDijkstra>> pq;
-
-    dist[i][j] = 0;
-    pq.push({0.0, {i, j}});
-
-    // Vectores de movimiento: Arriba, Abajo, Izq, Der
-    int dFila[] = {-1, 1, 0, 0};
-    int dCol[] = {0, 0, -1, 1};
+    // Movimientos posibles: Arriba, Abajo, Izquierda, Derecha
+    int dx[] = {-1, 1, 0, 0};
+    int dy[] = {0, 0, -1, 1};
 
     while (!pq.empty()) {
-        double costoActual = pq.top().first;
-        int f = pq.top().second.first;
-        int c = pq.top().second.second;
+        Estado actual = pq.top();
         pq.pop();
 
-        if (costoActual > dist[f][c]) continue;
-        if (f == x && c == y) break; // Encontramos destino
+        int ux = actual.x;
+        int uy = actual.y;
 
-        // Explorar 4 vecinos
+        // Si llegamos al destino, podemos detenernos (opcional, pero eficiente)
+        if (ux == i_dest && uy == j_dest) break;
+
+        if (actual.costo > dist[ux][uy]) continue;
+
+        char baseActual = bases[ux * ancho + uy];
+
+        // Revisar vecinos
         for (int k = 0; k < 4; k++) {
-            int nf = f + dFila[k];
-            int nc = c + dCol[k];
+            int vx = ux + dx[k];
+            int vy = uy + dy[k];
 
-            // Validar existencia del vecino en la matriz
-            if (nf >= 0 && nf < filas && nc >= 0 && nc < matriz[nf].size()) {
-                // Formula del enunciado: 1 / (1 + |ASCII_1 - ASCII_2|)
-                double peso = 1.0 / (1.0 + std::abs((int)matriz[f][c] - (int)matriz[nf][nc]));
-                
-                if (dist[f][c] + peso < dist[nf][nc]) {
-                    dist[nf][nc] = dist[f][c] + peso;
-                    padre[nf][nc] = {f, c};
-                    pq.push({dist[nf][nc], {nf, nc}});
+            // Validar límites y que la posición exista en el vector lineal
+            if (vx >= 0 && vx < alto && vy >= 0 && vy < ancho) {
+                int indiceVecino = vx * ancho + vy;
+                if (indiceVecino < totalBases) {
+                    char baseVecina = bases[indiceVecino];
+                    float peso = calcularPeso(baseActual, baseVecina);
+                    
+                    if (dist[ux][uy] + peso < dist[vx][vy]) {
+                        dist[vx][vy] = dist[ux][uy] + peso;
+                        parent[vx][vy] = {ux, uy};
+                        pq.push({vx, vy, dist[vx][vy]});
+                    }
                 }
             }
         }
     }
 
-    // 4. Resultados
-    if (dist[x][y] == std::numeric_limits<double>::infinity()) {
-        std::cout << "No existe una ruta entre [" << i << "," << j << "] y [" << x << "," << y << "].\n";
+    // 5. Resultados
+    if (dist[i_dest][j_dest] == std::numeric_limits<float>::infinity()) {
+        std::cout << "No existe ruta entre [" << i_orig << "," << j_orig << "] y [" << i_dest << "," << j_dest << "].\n";
     } else {
-        std::cout << "Para la secuencia " << descripcion_secuencia << ", la ruta más corta entre la base en [" 
-                << i << "," << j << "] y la base en [" << x << "," << y << "] es:\n";
+        std::cout << "Para la secuencia " << descripcion_secuencia << ", la ruta más corta entre la base "
+                  << bases[i_orig * ancho + j_orig] << " en [" << i_orig << "," << j_orig << "] y la base "
+                  << bases[i_dest * ancho + j_dest] << " en [" << i_dest << "," << j_dest << "] es:\n";
         
-        // Reconstruccion (Backtracking)
-        std::vector<char> ruta;
-        std::pair<int, int> actual = {x, y};
-        while (actual.first != -1) {
-            ruta.push_back(matriz[actual.first][actual.second]);
-            actual = padre[actual.first][actual.second];
+        // Reconstruir camino
+        std::vector<char> camino;
+        int currX = i_dest;
+        int currY = j_dest;
+        
+        while (currX != -1 && currY != -1) {
+            camino.push_back(bases[currX * ancho + currY]);
+            std::pair<int, int> p = parent[currX][currY];
+            // Verificar si llegamos al inicio
+            if (currX == i_orig && currY == j_orig) break;
+            currX = p.first;
+            currY = p.second;
         }
-        std::reverse(ruta.begin(), ruta.end()); // Invertir para tener Inicio -> Fin
+        std::reverse(camino.begin(), camino.end());
 
-        for (size_t k = 0; k < ruta.size(); k++) {
-            std::cout << ruta[k];
-            if (k < ruta.size() - 1) std::cout << ", ";
+        // Imprimir camino
+        for (size_t k = 0; k < camino.size(); k++) {
+            std::cout << camino[k];
+            if (k < camino.size() - 1) std::cout << " -> ";
         }
-        std::cout << "\nEl costo total de la ruta es: " << dist[x][y] << "\n";
+        std::cout << "\nEl costo total de la ruta es: " << dist[i_dest][j_dest] << "\n";
     }
 }
 
-void Genoma::base_remota(std::string descripcion_secuencia, int i, int j) {
-    Secuencia* secEncontrada = nullptr;
-    for (auto& s : conjunto) {
-        if (s.Obtenernombre() == descripcion_secuencia) {
-            secEncontrada = &s;
+void Genoma::base_remota(std::string descripcion_secuencia, int i_orig, int j_orig) {
+    // 1. Buscar la secuencia
+    auto it = conjunto.begin();
+    bool encontrada = false;
+    while (it != conjunto.end()) {
+        if (it->Obtenernombre() == descripcion_secuencia) {
+            encontrada = true;
             break;
         }
+        it++;
     }
 
-    if (secEncontrada == nullptr) {
+    if (!encontrada) {
         std::cout << "La secuencia " << descripcion_secuencia << " no existe.\n";
         return;
     }
 
-    std::vector<std::vector<char>> matriz = secEncontrada->obtenerMatriz();
-    int filas = matriz.size();
+    // 2. Preparar datos
+    std::vector<char> bases(it->lineas.begin(), it->lineas.end());
+    int ancho = it->anchoLinea;
+    int totalBases = bases.size();
+    int alto = (totalBases + ancho - 1) / ancho;
 
-    if (i < 0 || i >= filas || j < 0 || j >= matriz[i].size()) {
-        std::cout << "La base en la posición [" << i << "," << j << "] no existe.\n";
+    // 3. Validar origen
+    if (i_orig < 0 || i_orig >= alto || j_orig < 0 || j_orig >= ancho || (i_orig * ancho + j_orig) >= totalBases) {
+        std::cout << "La base en la posición [" << i_orig << "," << j_orig << "] no existe.\n";
         return;
     }
-    std::vector<std::vector<double>> dist(filas);
-    std::vector<std::vector<std::pair<int, int>>> padre(filas);
 
-    for(int k=0; k<filas; k++){
-        dist[k].resize(matriz[k].size(), std::numeric_limits<double>::infinity());
-        padre[k].resize(matriz[k].size(), {-1, -1});
-    }
+    char baseOrigen = bases[i_orig * ancho + j_orig];
 
-    std::priority_queue<NodoDijkstra, std::vector<NodoDijkstra>, std::greater<NodoDijkstra>> pq;
-    dist[i][j] = 0;
-    pq.push({0.0, {i, j}});
+    // 4. Dijkstra completo (hacia todos los nodos)
+    std::vector<std::vector<float>> dist(alto, std::vector<float>(ancho, std::numeric_limits<float>::infinity()));
+    std::vector<std::vector<std::pair<int, int>>> parent(alto, std::vector<std::pair<int, int>>(ancho, {-1, -1}));
+    std::priority_queue<Estado, std::vector<Estado>, std::greater<Estado>> pq;
 
-    int dFila[] = {-1, 1, 0, 0};
-    int dCol[] = {0, 0, -1, 1};
+    dist[i_orig][j_orig] = 0;
+    pq.push({i_orig, j_orig, 0});
+
+    int dx[] = {-1, 1, 0, 0};
+    int dy[] = {0, 0, -1, 1};
 
     while (!pq.empty()) {
-        double costoActual = pq.top().first;
-        int f = pq.top().second.first;
-        int c = pq.top().second.second;
+        Estado actual = pq.top();
         pq.pop();
 
-        if (costoActual > dist[f][c]) continue;
+        if (actual.costo > dist[actual.x][actual.y]) continue;
+
+        char baseActual = bases[actual.x * ancho + actual.y];
 
         for (int k = 0; k < 4; k++) {
-            int nf = f + dFila[k];
-            int nc = c + dCol[k];
-            if (nf >= 0 && nf < filas && nc >= 0 && nc < matriz[nf].size()) {
-                double peso = 1.0 / (1.0 + std::abs((int)matriz[f][c] - (int)matriz[nf][nc]));
-                if (dist[f][c] + peso < dist[nf][nc]) {
-                    dist[nf][nc] = dist[f][c] + peso;
-                    padre[nf][nc] = {f, c};
-                    pq.push({dist[nf][nc], {nf, nc}});
-                }
-            }
-        }
-    }
-    char baseOrigen = matriz[i][j];
-    double maxDist = -1.0;
-    int rx = -1, ry = -1;
+            int vx = actual.x + dx[k];
+            int vy = actual.y + dy[k];
 
-    for (int f = 0; f < filas; f++) {
-        for (int c = 0; c < matriz[f].size(); c++) {
-            if (f == i && c == j) continue;
-
-            if (dist[f][c] != std::numeric_limits<double>::infinity() && matriz[f][c] == baseOrigen) {
-                if (dist[f][c] > maxDist) {
-                    maxDist = dist[f][c];
-                    rx = f;
-                    ry = c;
+            if (vx >= 0 && vx < alto && vy >= 0 && vy < ancho) {
+                int idxVecino = vx * ancho + vy;
+                if (idxVecino < totalBases) {
+                    char baseVecina = bases[idxVecino];
+                    float peso = calcularPeso(baseActual, baseVecina);
+                    
+                    if (dist[actual.x][actual.y] + peso < dist[vx][vy]) {
+                        dist[vx][vy] = dist[actual.x][actual.y] + peso;
+                        parent[vx][vy] = {actual.x, actual.y};
+                        pq.push({vx, vy, dist[vx][vy]});
+                    }
                 }
             }
         }
     }
 
-    if (rx != -1) {
-        std::cout << "Para la secuencia " << descripcion_secuencia << ", la base remota está ubicada en [" 
-                  << rx << "," << ry << "].\n";
+    // 5. Buscar la base remota (Misma base, mayor distancia)
+    float maxDist = -1.0f;
+    int maxI = -1, maxJ = -1;
+
+    for (int i = 0; i < alto; i++) {
+        for (int j = 0; j < ancho; j++) {
+            int idx = i * ancho + j;
+            if (idx < totalBases) {
+                // Debe ser la misma letra Y la distancia no debe ser infinito (alcanzable) Y mayor a la actual
+                if (bases[idx] == baseOrigen && dist[i][j] != std::numeric_limits<float>::infinity()) {
+                    if (dist[i][j] > maxDist) {
+                        maxDist = dist[i][j];
+                        maxI = i;
+                        maxJ = j;
+                    }
+                }
+            }
+        }
+    }
+
+    // 6. Resultados
+    if (maxI == -1) {
+        // Esto solo pasa si no hay otras bases iguales o no son alcanzables
+        std::cout << "No se encontró ninguna otra base '" << baseOrigen << "' alcanzable.\n";
+    } else {
+        std::cout << "Para la secuencia " << descripcion_secuencia << ", la base remota está ubicada en ["
+                  << maxI << "," << maxJ << "].\n";
+        std::cout << "La ruta entre la base en [" << i_orig << "," << j_orig << "] y la base remota en ["
+                  << maxI << "," << maxJ << "] es:\n";
+
+        // Reconstruir camino
+        std::vector<char> camino;
+        int currX = maxI;
+        int currY = maxJ;
         
-        std::vector<char> ruta;
-        std::pair<int, int> actual = {rx, ry};
-        while (actual.first != -1) {
-            ruta.push_back(matriz[actual.first][actual.second]);
-            actual = padre[actual.first][actual.second];
+        while (currX != -1 && currY != -1) {
+            camino.push_back(bases[currX * ancho + currY]);
+            std::pair<int, int> p = parent[currX][currY];
+            if (currX == i_orig && currY == j_orig) break;
+            currX = p.first;
+            currY = p.second;
         }
-        std::reverse(ruta.begin(), ruta.end());
+        std::reverse(camino.begin(), camino.end());
 
-        std::cout << "La ruta entre la base en [" << i << "," << j << "] y la base remota en [" 
-                  << rx << "," << ry << "] es:\n";
-        for (size_t k = 0; k < ruta.size(); k++) {
-            std::cout << ruta[k];
-            if (k < ruta.size() - 1) std::cout << ", ";
+        for (size_t k = 0; k < camino.size(); k++) {
+            std::cout << camino[k];
+            if (k < camino.size() - 1) std::cout << " -> ";
         }
         std::cout << "\nEl costo total de la ruta es: " << maxDist << "\n";
-    } else {
-        std::cout << "No se encontró ninguna base remota alcanzable idéntica a la original.\n";
     }
 }
