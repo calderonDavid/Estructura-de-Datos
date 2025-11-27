@@ -10,7 +10,6 @@
 #include <cmath>
 #include <limits>
 #include <algorithm>
-#include <iomanip>
 
 
 // Estructura auxiliar para Dijkstra
@@ -55,10 +54,10 @@ void Genoma::ListarSecuencias() {
         //dependiendo si esta completo o no, se imprime.. (nombre, tamaño)
             if (it->EsCompleta()) {
                 std::cout << "Secuencia " << it->Obtenernombre()
-                          << " contiene " << it->lineas.size() << " bases.\n";
+                        << " contiene " << it->lineas.size() << " bases.\n";
             } else {
                 std::cout << "Secuencia " << it->Obtenernombre()
-                          << " contiene al menos " << it->lineas.size()<< " bases.\n";
+                        << " contiene al menos " << it->lineas.size()<< " bases.\n";
             }
         }
     }
@@ -107,7 +106,7 @@ void Genoma::ExisteSubsecuencia(std::string &sub) {
     // se imprime con base en si se encontro o no la sub secuencia
     if (existe) {
         std::cout << "La subsecuencia dada se repite " << contador 
-                  << " veces dentro de las secuencias cargadas.\n";
+                << " veces dentro de las secuencias cargadas.\n";
     } else {
         std::cout << "La subsecuencia dada no existe dentro de las secuencias cargadas.\n";
     }
@@ -281,12 +280,12 @@ float calcularPeso(char a, char b) {
     return 1.0f / (1.0f + std::abs((int)a - (int)b));
 }
 
-void Genoma::ruta_mas_corta(std::string descripcion_secuencia, int i_orig, int j_orig, int i_dest, int j_dest) {
+void Genoma::ruta_mas_corta(std::string nombreSec, int i, int j, int x, int y) {
     // 1. Buscar la secuencia
     auto it = conjunto.begin();
     bool encontrada = false;
     while (it != conjunto.end()) {
-        if (it->Obtenernombre() == descripcion_secuencia) {
+        if (it->Obtenernombre() == nombreSec) {
             encontrada = true;
             break;
         }
@@ -294,7 +293,7 @@ void Genoma::ruta_mas_corta(std::string descripcion_secuencia, int i_orig, int j
     }
 
     if (!encontrada) {
-        std::cout << "La secuencia " << descripcion_secuencia << " no existe.\n";
+        std::cout << "La secuencia " << nombreSec << " no existe.\n";
         return;
     }
 
@@ -308,12 +307,12 @@ void Genoma::ruta_mas_corta(std::string descripcion_secuencia, int i_orig, int j
     int alto = (totalBases + ancho - 1) / ancho; // División techo
 
     // 3. Validar coordenadas
-    if (i_orig < 0 || i_orig >= alto || j_orig < 0 || j_orig >= ancho || (i_orig * ancho + j_orig) >= totalBases) {
-        std::cout << "La base en la posición [" << i_orig << "," << j_orig << "] no existe.\n";
+    if (i < 0 || i >= alto || j < 0 || j >= ancho || (i * ancho + j) >= totalBases) {
+        std::cout << "La base en la posición [" << i << "," << j << "] no existe.\n";
         return;
     }
-    if (i_dest < 0 || i_dest >= alto || j_dest < 0 || j_dest >= ancho || (i_dest * ancho + j_dest) >= totalBases) {
-        std::cout << "La base en la posición [" << i_dest << "," << j_dest << "] no existe.\n";
+    if (i < 0 || i >= alto || j < 0 || j >= ancho || (i * ancho + j) >= totalBases) {
+        std::cout << "La base en la posición [" << i << "," << j << "] no existe.\n";
         return;
     }
 
@@ -325,8 +324,8 @@ void Genoma::ruta_mas_corta(std::string descripcion_secuencia, int i_orig, int j
     
     std::priority_queue<Estado, std::vector<Estado>, std::greater<Estado>> pq;
 
-    dist[i_orig][j_orig] = 0;
-    pq.push({i_orig, j_orig, 0});
+    dist[i][j] = 0;
+    pq.push({i, j, 0});
 
     // Movimientos posibles: Arriba, Abajo, Izquierda, Derecha
     int dx[] = {-1, 1, 0, 0};
@@ -340,7 +339,7 @@ void Genoma::ruta_mas_corta(std::string descripcion_secuencia, int i_orig, int j
         int uy = actual.y;
 
         // Si llegamos al destino, podemos detenernos (opcional, pero eficiente)
-        if (ux == i_dest && uy == j_dest) break;
+        if (ux == i && uy == j) break;
 
         if (actual.costo > dist[ux][uy]) continue;
 
@@ -369,23 +368,23 @@ void Genoma::ruta_mas_corta(std::string descripcion_secuencia, int i_orig, int j
     }
 
     // 5. Resultados
-    if (dist[i_dest][j_dest] == std::numeric_limits<float>::infinity()) {
-        std::cout << "No existe ruta entre [" << i_orig << "," << j_orig << "] y [" << i_dest << "," << j_dest << "].\n";
+    if (dist[i][j] == std::numeric_limits<float>::infinity()) {
+        std::cout << "No existe ruta entre [" << i << "," << j << "] y [" << i << "," << j << "].\n";
     } else {
-        std::cout << "Para la secuencia " << descripcion_secuencia << ", la ruta más corta entre la base "
-                  << bases[i_orig * ancho + j_orig] << " en [" << i_orig << "," << j_orig << "] y la base "
-                  << bases[i_dest * ancho + j_dest] << " en [" << i_dest << "," << j_dest << "] es:\n";
+        std::cout << "Para la secuencia " << nombreSec << ", la ruta más corta entre la base "
+                  << bases[i * ancho + j] << " en [" << i << "," << j << "] y la base "
+                  << bases[i * ancho + j] << " en [" << i << "," << j << "] es:\n";
         
         // Reconstruir camino
         std::vector<char> camino;
-        int currX = i_dest;
-        int currY = j_dest;
+        int currX = i;
+        int currY = j;
         
         while (currX != -1 && currY != -1) {
             camino.push_back(bases[currX * ancho + currY]);
             std::pair<int, int> p = parent[currX][currY];
             // Verificar si llegamos al inicio
-            if (currX == i_orig && currY == j_orig) break;
+            if (currX == i && currY == j) break;
             currX = p.first;
             currY = p.second;
         }
@@ -396,16 +395,16 @@ void Genoma::ruta_mas_corta(std::string descripcion_secuencia, int i_orig, int j
             std::cout << camino[k];
             if (k < camino.size() - 1) std::cout << " -> ";
         }
-        std::cout << "\nEl costo total de la ruta es: " << dist[i_dest][j_dest] << "\n";
+        std::cout << "\nEl costo total de la ruta es: " << dist[i][j] << "\n";
     }
 }
 
-void Genoma::base_remota(std::string descripcion_secuencia, int i_orig, int j_orig) {
+void Genoma::base_remota(std::string nombreSec, int i, int j) {
     // 1. Buscar la secuencia
     auto it = conjunto.begin();
     bool encontrada = false;
     while (it != conjunto.end()) {
-        if (it->Obtenernombre() == descripcion_secuencia) {
+        if (it->Obtenernombre() == nombreSec) {
             encontrada = true;
             break;
         }
@@ -413,7 +412,7 @@ void Genoma::base_remota(std::string descripcion_secuencia, int i_orig, int j_or
     }
 
     if (!encontrada) {
-        std::cout << "La secuencia " << descripcion_secuencia << " no existe.\n";
+        std::cout << "La secuencia " << nombreSec << " no existe.\n";
         return;
     }
 
@@ -424,20 +423,20 @@ void Genoma::base_remota(std::string descripcion_secuencia, int i_orig, int j_or
     int alto = (totalBases + ancho - 1) / ancho;
 
     // 3. Validar origen
-    if (i_orig < 0 || i_orig >= alto || j_orig < 0 || j_orig >= ancho || (i_orig * ancho + j_orig) >= totalBases) {
-        std::cout << "La base en la posición [" << i_orig << "," << j_orig << "] no existe.\n";
+    if (i < 0 || i >= alto || j < 0 || j >= ancho || (i * ancho + j) >= totalBases) {
+        std::cout << "La base en la posición [" << i << "," << j << "] no existe.\n";
         return;
     }
 
-    char baseOrigen = bases[i_orig * ancho + j_orig];
+    char baseOrigen = bases[i * ancho + j];
 
     // 4. Dijkstra completo (hacia todos los nodos)
     std::vector<std::vector<float>> dist(alto, std::vector<float>(ancho, std::numeric_limits<float>::infinity()));
     std::vector<std::vector<std::pair<int, int>>> parent(alto, std::vector<std::pair<int, int>>(ancho, {-1, -1}));
     std::priority_queue<Estado, std::vector<Estado>, std::greater<Estado>> pq;
 
-    dist[i_orig][j_orig] = 0;
-    pq.push({i_orig, j_orig, 0});
+    dist[i][j] = 0;
+    pq.push({i, j, 0});
 
     int dx[] = {-1, 1, 0, 0};
     int dy[] = {0, 0, -1, 1};
@@ -495,9 +494,9 @@ void Genoma::base_remota(std::string descripcion_secuencia, int i_orig, int j_or
         // Esto solo pasa si no hay otras bases iguales o no son alcanzables
         std::cout << "No se encontró ninguna otra base '" << baseOrigen << "' alcanzable.\n";
     } else {
-        std::cout << "Para la secuencia " << descripcion_secuencia << ", la base remota está ubicada en ["
+        std::cout << "Para la secuencia " << nombreSec << ", la base remota está ubicada en ["
                   << maxI << "," << maxJ << "].\n";
-        std::cout << "La ruta entre la base en [" << i_orig << "," << j_orig << "] y la base remota en ["
+        std::cout << "La ruta entre la base en [" << i << "," << j << "] y la base remota en ["
                   << maxI << "," << maxJ << "] es:\n";
 
         // Reconstruir camino
@@ -508,7 +507,7 @@ void Genoma::base_remota(std::string descripcion_secuencia, int i_orig, int j_or
         while (currX != -1 && currY != -1) {
             camino.push_back(bases[currX * ancho + currY]);
             std::pair<int, int> p = parent[currX][currY];
-            if (currX == i_orig && currY == j_orig) break;
+            if (currX == i && currY == j) break;
             currX = p.first;
             currY = p.second;
         }
