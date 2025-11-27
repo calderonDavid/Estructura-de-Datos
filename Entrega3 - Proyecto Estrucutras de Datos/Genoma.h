@@ -28,8 +28,8 @@ public:
     void EnmascararSubsecuencia(std::string &sub);
     void codificar(std::string& salidaArchivo);
     void decodificar(const std::string& nombreArchivo);
-    void ruta_mas_corta(std::string nombreSec, int i, int j, int x, int y);
-    void base_remota(std::string nombreSec, int i, int j);
+    void ruta_mas_corta(std::string descripcion_secuencia, int i_orig, int j_orig, int i_dest, int j_dest);
+    void base_remota(std::string descripcion_secuencia, int i_orig, int j_orig);
 };
 
 #endif
